@@ -1,4 +1,9 @@
-name: 24/7 Pro Stream Bot & Debugger
+
+
+
+
+
+name: 24/7 Zero-UI Stream Bot
 
 on:
   workflow_dispatch:
@@ -9,7 +14,7 @@ on:
         type: string
         default: 'https://dadocric.st/player.php?id=starsp3&v=m'
       okru_stream_channel:
-        description: 'OK.ru Broadcast Channel (1 to 5)'
+        description: 'OK.ru Broadcast Channel (1 to 8)'
         required: true
         type: choice
         options: [ '1', '2', '3', '4', '5', '6', '7', '8' ]
@@ -25,7 +30,7 @@ permissions:
   contents: write
 
 jobs:
-  stream-and-record:
+  stream-and-hook:
     runs-on: ubuntu-latest
     timeout-minutes: 360 # 6 Hours Limit
 
@@ -38,34 +43,107 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Install FFmpeg, Virtual Display, & Audio Server
+    - name: Install FFmpeg & Virtual Environment
       run: |
         sudo apt-get update
-        sudo apt-get install -y ffmpeg xvfb pulseaudio dbus-x11
+        sudo apt-get install -y ffmpeg xvfb dbus-x11
 
     - name: Install NPM Packages
       run: npm install
 
-    - name: Run Script (Live Broadcast + Debug Recording)
+    - name: Run Script (MediaStream Extraction)
       env:
         TARGET_URL: ${{ github.event.inputs.target_url }}
         OKRU_STREAM_ID: ${{ github.event.inputs.okru_stream_channel }}
         STREAM_QUALITY: ${{ github.event.inputs.stream_quality }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_PAT: ${{ secrets.GITHUB_TOKEN }} # Ensure this token has workflow dispatch permissions
       run: |
-        pulseaudio -D --exit-idle-time=-1
-        pacmd load-module module-virtual-sink sink_name=v1
-        pacmd set-default-sink v1
-        pacmd set-default-source v1.monitor
         xvfb-run -s "-screen 0 1280x720x24 -ac" node stream.js
 
-    # 🚀 MAGIC UPLOAD TO RELEASES (Run Even if Cancelled!)
-    - name: Upload Debug Video to GitHub Releases
-      if: always() 
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: "broadcast-${{ github.run_id }}"
-        name: "Broadcast Debug Log - ${{ github.run_id }}"
-        body: "First 30 seconds of the broadcast. Shows if the auto-clicker successfully bypassed ads."
-        files: recording.mp4
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+
+
+
+
+
+
+
+
+
+# // =========== done done =========================
+
+
+
+# name: 24/7 Pro Stream Bot & Debugger
+
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       target_url:
+#         description: 'Target Stream URL'
+#         required: true
+#         type: string
+#         default: 'https://dadocric.st/player.php?id=starsp3&v=m'
+#       okru_stream_channel:
+#         description: 'OK.ru Broadcast Channel (1 to 5)'
+#         required: true
+#         type: choice
+#         options: [ '1', '2', '3', '4', '5', '6', '7', '8' ]
+#         default: '1'
+#       stream_quality:
+#         description: 'Internet Speed / Stream Quality'
+#         required: true
+#         type: choice
+#         options: [ '110KBps (Balanced 480p)' ]
+#         default: '110KBps (Balanced 480p)'
+
+# permissions:
+#   contents: write
+
+# jobs:
+#   stream-and-record:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 360 # 6 Hours Limit
+
+#     steps:
+#     - name: Get Code
+#       uses: actions/checkout@v3
+
+#     - name: Setup Node.js
+#       uses: actions/setup-node@v3
+#       with:
+#         node-version: '18'
+
+#     - name: Install FFmpeg, Virtual Display, & Audio Server
+#       run: |
+#         sudo apt-get update
+#         sudo apt-get install -y ffmpeg xvfb pulseaudio dbus-x11
+
+#     - name: Install NPM Packages
+#       run: npm install
+
+#     - name: Run Script (Live Broadcast + Debug Recording)
+#       env:
+#         TARGET_URL: ${{ github.event.inputs.target_url }}
+#         OKRU_STREAM_ID: ${{ github.event.inputs.okru_stream_channel }}
+#         STREAM_QUALITY: ${{ github.event.inputs.stream_quality }}
+#       run: |
+#         pulseaudio -D --exit-idle-time=-1
+#         pacmd load-module module-virtual-sink sink_name=v1
+#         pacmd set-default-sink v1
+#         pacmd set-default-source v1.monitor
+#         xvfb-run -s "-screen 0 1280x720x24 -ac" node stream.js
+
+#     # 🚀 MAGIC UPLOAD TO RELEASES (Run Even if Cancelled!)
+#     - name: Upload Debug Video to GitHub Releases
+#       if: always() 
+#       uses: softprops/action-gh-release@v1
+#       with:
+#         tag_name: "broadcast-${{ github.run_id }}"
+#         name: "Broadcast Debug Log - ${{ github.run_id }}"
+#         body: "First 30 seconds of the broadcast. Shows if the auto-clicker successfully bypassed ads."
+#         files: recording.mp4
+#       env:
+#         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
