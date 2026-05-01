@@ -1,4 +1,3 @@
-
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
@@ -6,77 +5,57 @@ puppeteer.use(StealthPlugin());
 const { spawn } = require('child_process');
 const WebSocket = require('ws'); 
 
-// 🚀 Multi-Stream Key Manager
-const STREAM_KEYS = {
-    '1': '14601603391083_14040893622891_puxzrwjniu', 
-    '2': '14601696583275_14041072274027_apdzpdb5xi', 
-    '3': '14617940008555_14072500914795_ohw67ls7ny',
-    '4': '14601972227691_14041593547371_obdhgewlmq',
-    '5': '15145825803883_15082736847467_hjyjq4bud4',
-    '6': '15145851166315_15082784229995_mr5eweath4', 
-    '7': '15145866042987_15082813393515_axt6r27f7m',
-    '8': '15145878756971_15082836265579_oeowgtmnxu'
-};
-
 const TARGET_URL = process.env.TARGET_URL || 'https://dadocric.st/player.php?id=starsp3&v=m';
-const SELECTED_CHANNEL = process.env.OKRU_STREAM_ID || '1';
-const ACTIVE_STREAM_KEY = STREAM_KEYS[SELECTED_CHANNEL] || STREAM_KEYS['1'];
-const RTMP_DESTINATION = `rtmp://vsu.okcdn.ru/input/${ACTIVE_STREAM_KEY}`;
 const WS_PORT = 8080; 
 
 let browser = null;
 let ffmpegProcess = null;
 let wss = null;
 
-// =========================================================================
-// 🔄 MAIN LOOP
-// =========================================================================
-async function mainLoop() {
-    while (true) {
-        try {
-            await startDirectStreaming();
-        } catch (error) {
-            console.error(`\n[!] ALERT: ${error.message}`);
-            console.log('[*] 🔄 Restarting everything in 3 seconds...');
-            await cleanup();
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        }
-    }
-}
-
-async function startDirectStreaming() {
-    console.log(`\n[*] Level 100 Hooking Init: Starting WebSocket Server on port ${WS_PORT}...`);
+async function startTestRecording() {
+    console.log(`\n[*] TEST MODE: Starting WebSocket Server on port ${WS_PORT}...`);
     
     // 1️⃣ START WEBSOCKET SERVER 
     wss = new WebSocket.Server({ port: WS_PORT });
     
-    // 2️⃣ START FFMPEG (Awaiting Data on stdin)
-    console.log(`[+] Starting FFmpeg to receive raw WebM data via stdin...`);
+    // 2️⃣ START FFMPEG (Saving to local recording.mp4)
+    console.log(`[+] Starting FFmpeg to save 15 seconds of raw data...`);
     let ffmpegArgs = [
-        '-hide_banner', '-loglevel', 'warning',
+        '-hide_banner', '-loglevel', 'info', // 'info' se humein FFmpeg ka har error dikhega
         '-f', 'webm', '-i', 'pipe:0', 
-        '-vf', 'scale=854:480', 
-        '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main',
-        '-b:v', '800k', '-maxrate', '850k', '-bufsize', '1700k',
-        '-pix_fmt', 'yuv420p', '-g', '60', 
-        '-c:a', 'aac', '-b:a', '64k', '-ac', '2', '-ar', '44100',
-        '-f', 'flv', RTMP_DESTINATION 
+        '-c:v', 'libx264', '-preset', 'ultrafast',
+        '-y', 'recording.mp4' // 👈 Local save, NO RTMP
     ];
     
     ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
     ffmpegProcess.stderr.on('data', (data) => {
-        const output = data.toString();
-        if (output.toLowerCase().includes('error')) {
-            console.log(`[FFmpeg Alert]: ${output.trim()}`);
-        }
+        console.log(`[FFmpeg]: ${data.toString().trim()}`);
     });
 
-    // Handle incoming data from Browser -> Node.js -> FFmpeg
+    // Handle incoming data
     wss.on('connection', (ws) => {
-        console.log('[+] Target browser connected to WebSocket! Receiving raw video data...');
+        console.log('\n[+] TARGET HOOKED! Target browser connected to WebSocket!');
+        let testTimerStarted = false;
+        let byteCount = 0;
+
         ws.on('message', (message) => {
+            byteCount += message.length;
+            
             if (ffmpegProcess && !ffmpegProcess.killed) {
                 ffmpegProcess.stdin.write(message);
+            }
+
+            // Jaise hi pehla data aaye, 15 sec ka timer on kar do
+            if (!testTimerStarted) {
+                testTimerStarted = true;
+                console.log('[*] 🟢 RAW DATA RECEIVING STARTED! Waiting 15 seconds to compile video...');
+                
+                setTimeout(async () => {
+                    console.log(`\n[+] Test Complete! Received total ${byteCount} bytes of raw video data.`);
+                    console.log('[*] Stopping and compiling recording.mp4...');
+                    await cleanup();
+                    process.exit(0); // Exit cleanly to trigger GitHub Action Upload
+                }, 15000);
             }
         });
     });
@@ -88,25 +67,19 @@ async function startDirectStreaming() {
         defaultViewport: { width: 1280, height: 720 },
         ignoreDefaultArgs: ['--enable-automation'], 
         args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--autoplay-policy=no-user-gesture-required'
+            '--no-sandbox', '--disable-setuid-sandbox', '--autoplay-policy=no-user-gesture-required'
         ]
     });
 
     const page = await browser.newPage();
     const pages = await browser.pages();
-    for (const p of pages) {
-        if (p !== page) await p.close();
-    }
+    for (const p of pages) { if (p !== page) await p.close(); }
 
-    // 🛑 POPUP BLOCKER
     browser.on('targetcreated', async (target) => {
         if (target.type() === 'page') {
             try {
                 const newPage = await target.page();
                 if (newPage && newPage !== page) {
-                    console.log(`[!] Ad Popup KILLED! Focus maintained.`);
                     await page.bringToFront(); 
                     await newPage.close();
                 }
@@ -114,14 +87,10 @@ async function startDirectStreaming() {
         }
     });
 
-    console.log(`[*] Navigating to: ${TARGET_URL}`);
     await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     // 🖱️ THE UNMUTE BUTTON CLICKER
-    console.log('[*] Hunting for the Unmute/Play button...');
-    let unmuteGone = false;
-    let attempts = 0;
-
+    let unmuteGone = false; let attempts = 0;
     while (!unmuteGone && attempts < 15) {
         unmuteGone = true;
         for (const frame of page.frames()) {
@@ -131,8 +100,7 @@ async function startDirectStreaming() {
                     unmuteGone = false;
                     const isVisible = await frame.evaluate(el => window.getComputedStyle(el).display !== 'none', unmuteBtn);
                     if (isVisible) {
-                        console.log(`[*] Trigger found! Clicking to start the video engine...`);
-                        await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000)); 
+                        await new Promise(r => setTimeout(r, 1000)); 
                         await frame.evaluate(el => el.click(), unmuteBtn); 
                         await new Promise(r => setTimeout(r, 2000));
                         await page.bringToFront();
@@ -141,62 +109,36 @@ async function startDirectStreaming() {
                 }
             } catch (err) {}
         }
-        attempts++;
-        await new Promise(r => setTimeout(r, 1000));
+        attempts++; await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 🪝 4️⃣ INJECT THE SPY (MediaStream Hooking)
-    console.log('[*] Injecting MediaStream Payload into the target frame...');
-    
-    let hookSuccessful = false;
+    // 🪝 4️⃣ INJECT THE SPY
     for (const frame of page.frames()) {
         try {
             const hasVideo = await frame.evaluate(() => !!document.querySelector('video'));
             if (hasVideo) {
-                console.log(`[+] Video element found in frame: ${frame.url().substring(0, 50)}...`);
-                
-                // INJECT EXFILTRATION SCRIPT
+                console.log(`[+] Video element found, injecting Hook...`);
                 await frame.evaluate((wsPort) => {
                     const video = document.querySelector('video');
                     if (!video) return;
-
                     video.play().catch(()=>{});
 
-                    console.log("Hooking stream...");
                     const stream = video.captureStream(); 
-                    
                     const ws = new WebSocket(`ws://127.0.0.1:${wsPort}`);
                     
                     ws.onopen = () => {
-                        console.log("Connected to local exporter.");
                         const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
-                        
                         recorder.ondataavailable = (event) => {
                             if (event.data && event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
                                 ws.send(event.data);
                             }
                         };
-                        
                         recorder.start(1000); 
                     };
                 }, WS_PORT);
-                
-                hookSuccessful = true;
                 break;
             }
         } catch (e) { }
-    }
-
-    if (!hookSuccessful) {
-        throw new Error("Could not find video element to hook! Anti-debugging might be active.");
-    }
-
-    // 🧠 WATCHDOG
-    console.log('\n[*] Pipeline Established! Zero-UI Streaming Active...');
-    while (true) {
-        if (!browser || !browser.isConnected()) throw new Error("Browser closed unexpectedly.");
-        if (!ffmpegProcess || ffmpegProcess.killed) throw new Error("FFmpeg crashed.");
-        await new Promise(r => setTimeout(r, 10000)); 
     }
 }
 
@@ -205,53 +147,11 @@ async function cleanup() {
         try { ffmpegProcess.stdin.end(); ffmpegProcess.kill('SIGKILL'); } catch(e){} 
         ffmpegProcess = null; 
     }
-    if (wss) {
-        try { wss.clients.forEach(ws => ws.close()); wss.close(); } catch(e){}
-        wss = null;
-    }
-    if (browser) { 
-        try { await browser.close(); } catch(e){} 
-        browser = null; 
-    }
+    if (wss) { try { wss.clients.forEach(ws => ws.close()); wss.close(); } catch(e){} wss = null; }
+    if (browser) { try { await browser.close(); } catch(e){} browser = null; }
 }
 
-process.on('SIGINT', async () => {
-    console.log('\n[*] Stopping live script cleanly...');
-    await cleanup();
-    process.exit(0);
-});
-
-// =========================================================================
-// ⏱️ AUTO-OVERLAP TRIGGER (Runs exactly after 5h 50m)
-// =========================================================================
-setTimeout(async () => {
-    console.log("\n[*] 5h 50m completed! Triggering next action for overlap...");
-    const repo = process.env.GITHUB_REPOSITORY;
-    const token = process.env.GH_PAT;
-    const ref = process.env.GITHUB_REF_NAME || 'main';
-    
-    if (!repo || !token) return;
-
-    try {
-        await fetch(`https://api.github.com/repos/${repo}/actions/workflows/main.yml/dispatches`, {
-            method: 'POST',
-            headers: { 'Accept': 'application/vnd.github.v3+json', 'Authorization': `token ${token}` },
-            body: JSON.stringify({
-                ref: ref,
-                inputs: {
-                    target_url: process.env.TARGET_URL,
-                    okru_stream_channel: process.env.OKRU_STREAM_ID,
-                    stream_quality: process.env.STREAM_QUALITY
-                }
-            })
-        });
-        console.log("[+] Next workflow run successfully triggered!");
-    } catch (err) {
-        console.error("[-] Failed to trigger next workflow.");
-    }
-}, 21000000); 
-
-mainLoop();
+startTestRecording();
 
 
 
