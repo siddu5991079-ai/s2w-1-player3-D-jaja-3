@@ -239,7 +239,7 @@ async function startDirectStreaming() {
         
         // 👉 A/V SYNC FIX: Value 0.8 se barha kar 1.4 kar di hai!
         // Agar ab bhi 19-20 ka farq lage toh isay '2.0' kar lena.
-        '-itsoffset', '1.25', 
+        '-itsoffset', '1.2', 
         
         '-use_wallclock_as_timestamps', '1', '-thread_queue_size', '1024',
         '-f', 'pulse', '-i', 'default',
