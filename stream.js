@@ -45,18 +45,19 @@ async function startDirectStreaming() {
     console.log(`[*] Starting browser and FFmpeg...`);
     const streamQuality = process.env.STREAM_QUALITY || '110KBps (Balanced 480p)';
     
+    // 🛠️ FIX 1: Display Variable aur Rendering Flags theek kiye
     browser = await puppeteer.launch({
         headless: false, 
         defaultViewport: { width: 1280, height: 720 },
         ignoreDefaultArgs: ['--enable-automation'], 
+        env: { DISPLAY: process.env.DISPLAY || ':99', ...process.env }, // 👈 DISPLAY zaroori hai black screen rokne ke liye
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage', 
             '--disable-gpu',           
             
-            // 👇 YEH 3 NAYE FLAGS WAPAS ADD KIYE HAIN CRASH / BLACK SCREEN ROKNE KE LIYE 👇
-            '--disable-software-rasterizer',   
+            // ❌ Yahan se --disable-software-rasterizer hata diya hai taake screen render ho
             '--disable-accelerated-2d-canvas', 
             '--force-color-profile=srgb',      
 
@@ -126,7 +127,7 @@ async function startDirectStreaming() {
         await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 🖱️ 2.5 THE NEW UNMUTE BUTTON CLICKER (One Time Auto-Click)
+    // 🖱️ 2.5 THE NEW UNMUTE BUTTON CLICKER
     console.log('[*] Hunting for the "CLICK UNMUTE STREAM" button...');
     let unmuteClicked = false;
     let unmuteAttempts = 0;
@@ -187,18 +188,8 @@ async function startDirectStreaming() {
         targetFrame = page.mainFrame();
     }
 
-    // ⬛ 4. IMMEDIATE BLACK BACKGROUND & FULLSCREEN FORCE
-    console.log('[*] Enforcing Black Background and Full Screen UI...');
-    await page.evaluate(() => {
-        document.body.style.backgroundColor = 'black';
-        document.body.style.overflow = 'hidden';
-        document.querySelectorAll('iframe').forEach(iframe => {
-            iframe.style.position = 'fixed'; iframe.style.top = '0'; iframe.style.left = '0';
-            iframe.style.width = '100vw'; iframe.style.height = '100vh';
-            iframe.style.zIndex = '999999'; iframe.style.backgroundColor = 'black'; iframe.style.border = 'none';
-        });
-    }).catch(() => {});
-
+    // 🛠️ FIX 2: SAFE FULLSCREEN FORCE (Black screen glitch yahan se theek kiya hai)
+    console.log('[*] Enforcing Full Screen UI Safely...');
     await targetFrame.evaluate(async () => {
         const style = document.createElement('style');
         style.innerHTML = `.jw-controls, .jw-ui, .plyr__controls, .vjs-control-bar, [data-player] .controls, #UnMutePlayer { display: none !important; }`;
@@ -208,9 +199,17 @@ async function startDirectStreaming() {
         if (video) { 
             video.muted = false; 
             video.volume = 1.0; 
-            video.style.position = 'fixed'; video.style.top = '0'; video.style.left = '0';
-            video.style.width = '100vw'; video.style.height = '100vh';
-            video.style.zIndex = '2147483647'; video.style.backgroundColor = 'black'; video.style.objectFit = 'contain';
+            video.style.position = 'fixed'; 
+            video.style.top = '0'; 
+            video.style.left = '0';
+            video.style.width = '100vw'; 
+            video.style.height = '100vh';
+            video.style.zIndex = '9999999999'; // Sabse aage le aye
+            video.style.backgroundColor = 'black'; 
+            video.style.objectFit = 'contain';
+            
+            // Zabardasti play karwao agar ruka ho
+            video.play().catch(()=>{});
         }
     }).catch(()=>{});
 
@@ -244,8 +243,7 @@ async function startDirectStreaming() {
         '-b:v', bv, '-maxrate', maxrate, '-bufsize', bufsize,
         '-pix_fmt', 'yuv420p', '-g', '60', '-c:a', 'aac', '-b:a', ba, '-ac', '2', '-ar', '44100',
         
-        // 🚀 AUDIO DELAY FIX (Perfect Syncing)
-        // Yahan '300' ka matlab 300ms (0.3 sec) delay hai. Agar audio pehle arahi ho toh isko barha kar 500 ya 600 kar dein.
+        // 🛠️ FIX 3: AUDIO DELAY FIX (Perfect Syncing) - 300ms delay
         '-af', 'aresample=async=1,adelay=300|300', 
         
         '-f', 'flv', RTMP_DESTINATION 
@@ -262,7 +260,7 @@ async function startDirectStreaming() {
     await recorder.stop();
     console.log('[+] 30-Sec Debug Video Saved! Safe to cancel workflow anytime now.');
 
-    // 🧠 7. THE SMART WATCHDOG (With Anti-Pause capability)
+    // 🧠 7. THE SMART WATCHDOG
     console.log('\n[*] Smart Engine Connected! 24/7 Monitoring Active...');
     while (true) {
         if (!browser || !browser.isConnected()) throw new Error("Browser closed.");
