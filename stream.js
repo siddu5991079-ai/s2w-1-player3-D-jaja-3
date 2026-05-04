@@ -118,7 +118,7 @@ async function startDirectStreaming() {
         await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 🖱️ 2.5 THE NEW UNMUTE BUTTON CLICKER (FIXED: Ab loop mein nahi phasega)
+    // 🖱️ 2.5 THE NEW UNMUTE BUTTON CLICKER (One Time Auto-Click)
     console.log('[*] Hunting for the "CLICK UNMUTE STREAM" button...');
     let unmuteClicked = false;
     let unmuteAttempts = 0;
@@ -140,7 +140,7 @@ async function startDirectStreaming() {
                         await frame.evaluate(el => el.click(), unmuteBtn); 
                         console.log(`[+] Successfully clicked UNMUTE! Proceeding...`);
                         
-                        unmuteClicked = true; // Yeh set hone se loop dobara nahi chalega
+                        unmuteClicked = true;
                         
                         await new Promise(r => setTimeout(r, 2000));
                         await page.bringToFront();
@@ -149,8 +149,7 @@ async function startDirectStreaming() {
                 }
             } catch (err) {}
         }
-        if (unmuteClicked) break; // Safety break taake while loop foran khatam ho jaye
-
+        if (unmuteClicked) break; 
         unmuteAttempts++;
         await new Promise(r => setTimeout(r, 1000));
     }
@@ -207,37 +206,39 @@ async function startDirectStreaming() {
         }
     }).catch(()=>{});
 
-    // 📡 5. START FFMPEG BROADCAST (WITH QUALITY SELECTOR & AUDIO SYNC FIX)
+    // 📡 5. START FFMPEG BROADCAST (FIXED AUDIO/VIDEO SYNC)
     console.log(`[+] Broadcasting to OK.ru CHANNEL: ${SELECTED_CHANNEL} - Quality: ${streamQuality}`);
     
-    // Quality Settings Variables
     let vfScale = 'scale=854:480';
     let bv = '800k'; let maxrate = '850k'; let bufsize = '1700k'; let ba = '64k';
 
-    // Apply specific quality rules based on GitHub Action Input
     if (streamQuality.includes('50KBps')) {
-        vfScale = 'scale=640:360';
-        bv = '350k'; maxrate = '400k'; bufsize = '800k'; ba = '32k';
+        vfScale = 'scale=640:360'; bv = '350k'; maxrate = '400k'; bufsize = '800k'; ba = '32k';
     } else if (streamQuality.includes('30KBps')) {
-        vfScale = 'scale=426:240';
-        bv = '200k'; maxrate = '220k'; bufsize = '440k'; ba = '32k';
+        vfScale = 'scale=426:240'; bv = '200k'; maxrate = '220k'; bufsize = '440k'; ba = '32k';
     }
 
     const displayNum = process.env.DISPLAY || ':99';
     let ffmpegArgs = [
-        '-y', '-use_wallclock_as_timestamps', '1', '-thread_queue_size', '1024',
+        '-y', 
+        
+        // 👉 1. VIDEO INPUT (Yahan video ko 0.8 sec delay kiya hai taake audio sath mil jaye)
+        '-use_wallclock_as_timestamps', '1', 
+        '-itsoffset', '0.8', 
+        '-thread_queue_size', '1024',
         '-f', 'x11grab', '-draw_mouse', '0', '-video_size', '1280x720', '-framerate', '30',
         '-i', displayNum, 
         
-        // Audio Delay Fix to sync with video
-        '-itsoffset', '1.4', 
+        // 👉 2. AUDIO INPUT (Audio se delay nikal diya gaya hai)
+        '-use_wallclock_as_timestamps', '1', 
+        '-thread_queue_size', '1024', 
+        '-f', 'pulse', '-i', 'default',
         
-        '-thread_queue_size', '1024', '-f', 'pulse', '-i', 'default',
         '-vf', vfScale, '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main',
         '-b:v', bv, '-maxrate', maxrate, '-bufsize', bufsize,
         '-pix_fmt', 'yuv420p', '-g', '60', '-c:a', 'aac', '-b:a', ba, '-ac', '2', '-ar', '44100',
         
-        // Advanced Audio Resample to prevent out of sync issues
+        // Advanced Audio Resample
         '-af', 'aresample=async=1000', 
         
         '-f', 'flv', RTMP_DESTINATION 
@@ -266,7 +267,6 @@ async function startDirectStreaming() {
             const v = document.querySelector('video');
             if (!v || v.ended) return 'DEAD';
             
-            // NEW: Anti-Pause Check. If video is paused, force it to play.
             if (v.paused) {
                 console.log("Video was paused! Forcing it back to play...");
                 v.play().catch(()=>{});
