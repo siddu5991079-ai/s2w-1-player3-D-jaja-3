@@ -225,19 +225,35 @@ async function startDirectStreaming() {
         bv = '800k'; maxrate = '850k'; bufsize = '1700k'; ba = '64k';
     }
 
+    
     const displayNum = process.env.DISPLAY || ':99';
     let ffmpegArgs = [
         '-y', '-use_wallclock_as_timestamps', '1', '-thread_queue_size', '1024',
+        
+        // 🎥 VIDEO INPUT
         '-f', 'x11grab', '-draw_mouse', '0', '-video_size', '1280x720', '-framerate', '30',
-        '-i', displayNum, '-thread_queue_size', '1024', '-f', 'pulse', '-i', 'default',
+        '-i', displayNum, 
+        
+        // 🎵 AUDIO INPUT
+        '-thread_queue_size', '1024', '-f', 'pulse', '-i', 'default',
+        
+        // ⚙️ FILTERS (Video Scale & AUDIO DELAY)
         '-vf', vfScale,
+        '-af', 'adelay=800|800', // <--- THE FIX: Yeh audio ko 800 milliseconds delay karega
+        
+        // 🎬 VIDEO ENCODING
         '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main',
         '-b:v', bv, '-maxrate', maxrate, '-bufsize', bufsize,
         '-pix_fmt', 'yuv420p', '-g', '60', '-max_muxing_queue_size', '1024',
+        
+        // 🎶 AUDIO ENCODING
         '-c:a', 'aac', '-b:a', ba, '-ac', '2', '-ar', '44100',
-        '-async', '1', '-f', 'flv', RTMP_DESTINATION 
+        
+        // 📡 OUTPUT
+        '-f', 'flv', RTMP_DESTINATION 
     ];
     
+    // const displayNum = process.env.DISPLAY || ':99';
     // let ffmpegArgs = [
     //     '-y', 
     //     '-use_wallclock_as_timestamps', '1', '-thread_queue_size', '1024',
